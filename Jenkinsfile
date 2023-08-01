@@ -1,58 +1,46 @@
 pipeline {
     agent any
-
-    environment {
-        // Define environment variables as needed
-        DOCKER_REGISTRY = '502746322071.dkr.ecr.ap-south-1.amazonaws.com/demo-project'
-        DOCKER_IMAGE_NAME = 'myapp'
-        AWS_REGION = 'ap-south-1'
-        AWS_ECR_CREDENTIALS = 'AWS Credentials for ECR' // Jenkins credential ID for AWS credentials
+     environment {
+        registry = "<Account_ID>.dkr.ecr.us-east-1.amazonaws.com/<REPO_NAME>"
     }
-
+   
     stages {
-        stage('Checkout') {
+          stage('Checkout') {
             steps {
-                // Checkout source code from the Git repository
-                git 'https://github.com/Nagendra206/srikanthtask.git'
+                git branch: 'main', url: 'https://github.com/Meenakshi0812/jenkins-ECR.git'
             }
         }
-
-        stage('Build Docker Image') {
-            steps {
-                // Build the Docker image
-                script {
-                    docker.withRegistry("${DOCKER_REGISTRY}", "${AWS_ECR_CREDENTIALS}") {
-                        def customImage = docker.build("${DOCKER_IMAGE_NAME}:${env.BUILD_ID}")
-                    }
-                }
-            }
-        }
-
-        stage('Push to ECR') {
-            steps {
-                withCredentials([
-                    usernamePassword(credentialsId: 'AWS Credentials for ECR', usernameVariable: 'AKIAXKDQECSL3V2Z6I57', passwordVariable: 'Ti7RTO9BnUtkjMbxj9eHEFYTps7LNzwhHmBEFa00')
-            ]) {
-                // Log in to ECR using Docker login command
-                sh "docker login --username AWS --password-stdin ${DOCKER_REGISTRY}" << EOF
-                    ${AWS_ACCESS_KEY_ID}
-                    ${AWS_SECRET_ACCESS_KEY}
-                EOF
-
-                // Tag the built Docker image with ECR repository URL
-                sh "docker tag ${DOCKER_IMAGE_NAME}:${env.BUILD_ID} ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_ID}"
-
-                // Push the Docker image to ECR
-                sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:${env.BUILD_ID}"
-              }
+           stage('Building image') {
+             steps{
+                  script {
+                   dockerImage = docker.build registry
+                   }
+      }
            }
-        }
+    
+            stage('Pushing to ECR') {
+             steps{  
+                  script {
+               withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_cred', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+    sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <Account_ID>.dkr.ecr.us-east-1.amazonaws.com'
+     sh 'docker push <Account_ID>.dkr.ecr.us-east-1.amazonaws.com/<REPO_NAME>'
+}
 
-
-    post {
-        always {
-            // Clean workspace and perform cleanup tasks
-            cleanWs()
+}
+                  }
+            }
+             stage('stop previous containers') {
+               steps {
+            sh 'docker ps -f name=mypythonContainer -q | xargs --no-run-if-empty docker container stop'
+            sh 'docker container ls -a -fname=mypythonContainer -q | xargs -r docker container rm'
+         }
+       }
+            stage('Docker Run') {
+              steps{
+                   script {
+                sh 'docker run -d -p 3000:3000 --rm --name mypythonContainer <Account_ID>.dkr.ecr.us-east-1.amazonaws.com/<REPO_NAME>:latest'     
+      }
+    }
         }
     }
-}
+  }
